@@ -1,0 +1,61 @@
+- name: Replace keys
+  hosts: all
+  become: yes
+  gather_facts: no
+  vars:
+    key_description: "{{ key.split(' ')[0] }}...{{ key.split(' ')[2] }}"
+  tasks:
+    - name: Read users
+      shell: >
+        awk -F: '($0!~/^#/)&&(($3>=1000)||$3==0)&&($1!="nobody"){print $1}' /etc/passwd
+      changed_when: false
+      register: users
+
+    - name: Check if key needs to be replaced
+      check_mode: yes
+      authorized_key:
+        state: absent
+        user: "{{ user }}"
+        key: "{{ key }}"
+        manage_dir: no
+      loop_control:
+        label: "{ key={{ key_description }} user={{ user }} }"
+      vars:
+        user: "{{ item.1 }}"
+        key: "{{ item.0 }}"
+      with_nested:
+        - "{{ keys_to_replace.keys()|list }}"
+        - "{{ users.stdout_lines }}"
+      register: keys_status
+
+    - name: Add replacement key
+      authorized_key:
+        state: present
+        user: "{{ user }}"
+        key: "{{ key }}"
+        path: "{{ authorized_keys_file }}"
+        manage_dir: no
+      loop_control:
+        label: "{ key={{ key_description }} user={{ user }} path={{ authorized_keys_file }} }"
+      vars:
+        key: "{{ keys_to_replace[item.invocation.module_args.key] }}"
+        authorized_keys_file: "{{ item.invocation.module_args.keyfile }}"
+        user: "{{ item.invocation.module_args.user }}"
+      when: item.changed
+      with_items: "{{ keys_status.results }}"
+
+    - name: Remove obsolete key
+      authorized_key:
+        state: absent
+        user: "{{ user }}"
+        key: "{{ key }}"
+        path: "{{ authorized_keys_file }}"
+        manage_dir: no
+      loop_control:
+        label: "{ key={{ key_description }} user={{ user }} path={{ authorized_keys_file }} }"
+      vars:
+        key: "{{ item.invocation.module_args.key }}"
+        authorized_keys_file: "{{ item.invocation.module_args.keyfile }}"
+        user: "{{ item.invocation.module_args.user }}"
+      when: item.changed
+      with_items: "{{ keys_status.results }}"

@@ -1,0 +1,2 @@
+keys_to_replace:
+  'ssh-rsa AAAAB3NzaC1yc2E... fnkr@example.com': 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... fnkr@example.com'
